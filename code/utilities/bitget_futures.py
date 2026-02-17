@@ -6,14 +6,34 @@ from typing import Any, Optional, Dict, List
 
 class BitgetFutures():
     def __init__(self, api_setup: Optional[Dict[str, Any]] = None) -> None:
+        
+        if api_setup is None:
+            api_setup = {}
 
-        if api_setup == None:
-            self.session = ccxt.bitget()
-        else:
-            api_setup.setdefault("options", {"defaultType": "future"})
-            self.session = ccxt.bitget(api_setup)
+        api_setup.setdefault("enableRateLimit", True)
+        api_setup.setdefault("options", {})
 
+        api_setup["options"].update({
+            "defaultType": "swap",
+            "defaultSubType": "linear",
+            "adjustForTimeDifference": True,
+        })
+
+        self.session = ccxt.bitget(api_setup)
         self.markets = self.session.load_markets()
+        
+    #     if api_setup == None:
+    #         self.session = ccxt.bitget()
+    #     else:
+    #         # api_setup.setdefault("options", {"defaultType": "future"}) # CHATGPT Correction
+    #         api_setup.setdefault("options", {
+    #             "defaultType": "swap",
+    #             "defaultSubType": "linear",
+    #             "adjustForTimeDifference": True,
+    #         })
+    #         self.session = ccxt.bitget(api_setup)
+
+    #     self.markets = self.session.load_markets()
   
     def fetch_ticker(self, symbol: str) -> Dict[str, Any]:
         try:
@@ -24,20 +44,21 @@ class BitgetFutures():
     def fetch_min_amount_tradable(self, symbol: str) -> float:
         try:
             return self.markets[symbol]['limits']['amount']['min']
+
         except Exception as e:
-            raise Exception(f"Failed to fetch minimum amount tradable: {e}")        
+            raise Exception(f"Failed to fetch minimum amount tradable: {e}")     
         
     def amount_to_precision(self, symbol: str, amount: float) -> str:
         try:
             return self.session.amount_to_precision(symbol, amount)
         except Exception as e:
-            raise Exception(f"Failed to convert amount {amount} {symbol} to precision", e)
+            raise Exception(f"Failed to convert amount {amount} {symbol} to precision: {e}")
 
     def price_to_precision(self, symbol: str, price: float) -> str:
         try:
             return self.session.price_to_precision(symbol, price)
         except Exception as e:
-            raise Exception(f"Failed to convert price {price} to precision for {symbol}", e)
+            raise Exception(f"Failed to convert price {price} to precision for {symbol}: {e}")
 
     def fetch_balance(self, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         if params is None:
@@ -75,20 +96,21 @@ class BitgetFutures():
         try:
             return self.session.cancel_order(id, symbol)
         except Exception as e:
-            raise Exception(f"Failed to cancel the {symbol} order {id}", e)
+            raise Exception(f"Failed to cancel the {symbol} order {id}: {e}")
 
     def cancel_trigger_order(self, id: str, symbol: str) -> Dict[str, Any]:
         try:
             return self.session.cancel_order(id, symbol, params={'stop': True})
         except Exception as e:
-            raise Exception(f"Failed to cancel the {symbol} trigger order {id}", e)
+            raise Exception(f"Failed to cancel the {symbol} trigger order {id}: {e}")
 
     def fetch_open_positions(self, symbol: str) -> List[Dict[str, Any]]:
         try:
-            positions = self.session.fetch_positions([symbol], params={'productType': 'USDT-FUTURES', 'marginCoin': 'USDT'})
+            positions = self.session.fetch_positions([symbol], params={'marginCoin': 'USDT'})
             real_positions = []
             for position in positions:
-                if float(position['contracts']) > 0:
+                contracts = position.get('contracts')
+                if contracts and float(contracts) != 0:
                     real_positions.append(position)
             return real_positions
         except Exception as e:
@@ -98,14 +120,14 @@ class BitgetFutures():
         try:
             return self.session.close_position(symbol, side=side)
         except Exception as e:
-            raise Exception(f"Failed to fetch closed order for {symbol}", e)
+            raise Exception(f"Failed to fetch closed order for {symbol}: {e}")
 
     def set_margin_mode(self, symbol: str, margin_mode: str = 'isolated') -> None:
         try:
             self.session.set_margin_mode(
                 margin_mode,
                 symbol,
-                params={'productType': 'USDT-FUTURES', 'marginCoin': 'USDT'},
+                params={'marginCoin': 'USDT'},
             )
         except Exception as e:
             raise Exception(f"Failed to set margin mode: {e}")
@@ -117,7 +139,6 @@ class BitgetFutures():
                     leverage,
                     symbol,
                     params={
-                        'productType': 'USDT-FUTURES',
                         'marginCoin': 'USDT',
                         'holdSide': 'long',
                     },
@@ -126,7 +147,6 @@ class BitgetFutures():
                     leverage,
                     symbol,
                     params={
-                        'productType': 'USDT-FUTURES',
                         'marginCoin': 'USDT',
                         'holdSide': 'short',
                     },
@@ -135,7 +155,7 @@ class BitgetFutures():
                 self.session.set_leverage(
                     leverage,
                     symbol,
-                    params={'productType': 'USDT-FUTURES', 'marginCoin': 'USDT'},
+                    params={'marginCoin': 'USDT'},
                 )
         except Exception as e:
             raise Exception(f"Failed to set leverage: {e}")
@@ -206,6 +226,7 @@ class BitgetFutures():
             params = {
                 'reduceOnly': reduce,
                 'triggerPrice': trigger_price,
+                'triggerType': 'mark_price',
                 'delegateType': 'price_fill',
             }
             return self.session.create_order(symbol, 'market', side, amount, params=params)
@@ -224,6 +245,7 @@ class BitgetFutures():
             params = {
                 'reduceOnly': reduce,
                 'triggerPrice': trigger_price,
+                'triggerType': 'mark_price',
                 'delegateType': 'price_fill',
             }
             return self.session.create_order(symbol, 'limit', side, amount, price, params=params)

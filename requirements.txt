@@ -1,8 +1,8 @@
 ccxt==4.3.5
-pandas==2.1.3
+pandas
 ta==0.11.0
 aiofiles==24.1.0
 seaborn==0.13.2
-pydantic==2.9.2
+pydantic
 requests==2.31.0
-numpy==1.26.2
+numpy

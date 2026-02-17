@@ -11,7 +11,7 @@ from utilities.bitget_futures import BitgetFutures
 
 # --- CONFIG ---
 params = {
-    'symbol': '/USDT:USDT',
+    'symbol': 'BTC/USDT:USDT',
     'timeframe': '1h',
     'margin_mode': 'isolated',  # 'cross'
     'balance_fraction': 1,
@@ -20,7 +20,7 @@ params = {
     'average_period': 5,
     'envelopes': [0.07, 0.11, 0.14],
     'stop_loss_pct': 0.4,
-#    'price_jump_pct': 0.3,  # optional, uncomment to use
+    'price_jump_pct': 0.3,  # optional, uncomment to use
     'use_longs': True,  # set to False if you want to use only shorts
     'use_shorts': True,  # set to False if you want to use only longs
 }
