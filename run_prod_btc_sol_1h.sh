@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Production launcher for BTC+SOL 1H bots (runs separately with nohup)
+# Usage:
+#   bash run_prod_btc_sol_1h.sh start
+#   bash run_prod_btc_sol_1h.sh stop
+#   bash run_prod_btc_sol_1h.sh status
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_DIR="$ROOT_DIR/logs"
+PID_DIR="$ROOT_DIR/pids"
+
+mkdir -p "$LOG_DIR" "$PID_DIR"
+
+BTC_SCRIPT="$ROOT_DIR/code/strategies/envelope/run_btc_trend_1h_v5_prod.py"
+SOL_SCRIPT="$ROOT_DIR/code/strategies/envelope/run_sol_bbrsi_1h_v4_prod.py"
+
+BTC_PID="$PID_DIR/btc_1h.pid"
+SOL_PID="$PID_DIR/sol_1h.pid"
+
+start_bot () {
+  local name="$1"
+  local script="$2"
+  local pidfile="$3"
+  local logfile="$4"
+
+  if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+    echo "[OK] $name already running (pid=$(cat "$pidfile"))"
+    return 0
+  fi
+
+  echo "[..] Starting $name..."
+  nohup python3 "$script" >> "$logfile" 2>&1 &
+  echo $! > "$pidfile"
+  echo "[OK] $name started (pid=$(cat "$pidfile"))"
+}
+
+stop_bot () {
+  local name="$1"
+  local pidfile="$2"
+
+  if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+    echo "[..] Stopping $name (pid=$(cat "$pidfile"))..."
+    kill "$(cat "$pidfile")" || true
+    rm -f "$pidfile"
+    echo "[OK] $name stopped"
+  else
+    echo "[OK] $name not running"
+    rm -f "$pidfile" 2>/dev/null || true
+  fi
+}
+
+status_bot () {
+  local name="$1"
+  local pidfile="$2"
+
+  if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+    echo "[OK] $name running (pid=$(cat "$pidfile"))"
+  else
+    echo "[NO] $name not running"
+  fi
+}
+
+cmd="${1:-status}"
+
+case "$cmd" in
+  start)
+    start_bot "BTC 1H" "$BTC_SCRIPT" "$BTC_PID" "$LOG_DIR/btc_1h.log"
+    start_bot "SOL 1H" "$SOL_SCRIPT" "$SOL_PID" "$LOG_DIR/sol_1h.log"
+    ;;
+  stop)
+    stop_bot "BTC 1H" "$BTC_PID"
+    stop_bot "SOL 1H" "$SOL_PID"
+    ;;
+  status)
+    status_bot "BTC 1H" "$BTC_PID"
+    status_bot "SOL 1H" "$SOL_PID"
+    echo "Logs: $LOG_DIR"
+    ;;
+  *)
+    echo "Unknown command: $cmd"
+    echo "Usage: $0 {start|stop|status}"
+    exit 1
+    ;;
+esac
