@@ -1,12 +1,17 @@
 # SOL BB+RSI 1H v4 PROD (locked params, stable trackers)
+# FIXES:
+# - Adds robust OHLCV fetch fallback for BitgetFutures wrappers that don't expose fetch_ohlcv
+# - Accepts either pandas.DataFrame or raw list-of-lists and normalizes to a DataFrame
 
 import os
 import sys
 import json
-import ta
 from datetime import datetime
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+import ta
+import pandas as pd
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from utilities.bitget_futures import BitgetFutures
 
@@ -16,46 +21,47 @@ from utilities.bitget_futures import BitgetFutures
 # ============================================================
 
 params = {
-    'symbol': 'SOL/USDT:USDT',
-    'timeframe': '1h',
-    'margin_mode': 'isolated',               # 'cross'
-    'balance_fraction': 1,
-    'leverage': 2,
+    "symbol": "SOL/USDT:USDT",
+    "timeframe": "1h",
+    "margin_mode": "isolated",  # "cross"
+    "balance_fraction": 1,
+    "leverage": 2,
 
     # Position sizing (keep your existing sizing style)
-    'position_size_percentage': 20,   # % of balance used per trade (single entry)
+    "position_size_percentage": 20,  # % of balance used per trade (single entry)
 
     # Direction controls
-    'use_longs': True,
-    'use_shorts': True,
+    "use_longs": True,
+    "use_shorts": True,
 
     # Bollinger Bands
-    'bb_period': 20,
-    'bb_std': 2.0,
+    "bb_period": 20,
+    "bb_std": 2.0,
 
     # RSI entry triggers
-    'rsi_period': 14,
-    'rsi_long_max': 36,      # allow longs when RSI <= this (oversold)
-    'rsi_short_min': 64,     # allow shorts when RSI >= this (overbought)
+    "rsi_period": 14,
+    "rsi_long_max": 36,   # allow longs when RSI <= this (oversold)
+    "rsi_short_min": 64,  # allow shorts when RSI >= this (overbought)
 
     # Regime filter (avoid trending markets for mean reversion)
-    'adx_period': 14,
-    'adx_soft': 15,          # full size when ADX <= this
-    'adx_hard': 22,          # no-trade when ADX >= this
+    "adx_period": 14,
+    "adx_soft": 15,   # full size when ADX <= this
+    "adx_hard": 22,   # no-trade when ADX >= this
 
     # ATR-based risk (recommended for 1H)
-    'atr_period': 14,
-    'stop_atr_mult': 1.8,   # stop distance = ATR * mult
-    'tp_to_basis': True,      # TP at BB basis (middle band)
+    "atr_period": 14,
+    "stop_atr_mult": 1.8,  # stop distance = ATR * mult
+    "tp_to_basis": True,   # TP at BB basis (middle band)
 
     # Entry order behavior (uses trigger-limit like your envelope bot)
-    'trigger_price_delta': 0.004,  # closer for 1H
+    "trigger_price_delta": 0.004,  # closer for 1H
 }
 
 # Tracker to prevent duplicate order spam (simple, per-symbol)
-TRACKER_FILE = os.path.join(os.path.dirname(__file__), f"tracker_bbrsi_{params['symbol'].split('/')[0].lower()}.json")
-# PROD override tracker file
-TRACKER_FILE = os.path.join(os.path.dirname(__file__), "tracker_sol_bbrsi_1h_v4_prod.json")
+TRACKER_FILE = os.path.join(
+    os.path.dirname(__file__),
+    "tracker_sol_bbrsi_1h_v4_prod.json",
+)
 
 
 def load_tracker():
@@ -76,7 +82,87 @@ def save_tracker(state):
         print(f"{datetime.now().strftime('%H:%M:%S')}: tracker save error: {e}")
 
 
-def compute_indicators(df):
+def _to_ohlcv_df(data):
+    """
+    Normalizes raw OHLCV into a DataFrame with columns:
+    timestamp, open, high, low, close, volume
+    """
+    if data is None:
+        return None
+
+    # Already a DataFrame
+    if isinstance(data, pd.DataFrame):
+        df = data.copy()
+        # Ensure required columns exist
+        required = {"open", "high", "low", "close"}
+        if not required.issubset(set(df.columns)):
+            raise ValueError(f"OHLCV DataFrame missing columns: {required - set(df.columns)}")
+        # Ensure timestamp column exists (optional but used by tracker)
+        if "timestamp" not in df.columns:
+            if "datetime" in df.columns:
+                df["timestamp"] = pd.to_datetime(df["datetime"]).astype("int64") // 10**6
+            elif df.index.name in ("timestamp", "datetime"):
+                # best-effort
+                try:
+                    df["timestamp"] = pd.to_datetime(df.index).astype("int64") // 10**6
+                except Exception:
+                    pass
+        return df.reset_index(drop=True)
+
+    # Raw list-of-lists (ccxt style): [ms, open, high, low, close, volume]
+    if isinstance(data, (list, tuple)) and len(data) > 0 and isinstance(data[0], (list, tuple)):
+        df = pd.DataFrame(data, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        return df
+
+    raise ValueError(f"Unsupported OHLCV data type: {type(data)}")
+
+
+def fetch_ohlcv_df(bitget: BitgetFutures, symbol: str, timeframe: str, limit: int = 300) -> pd.DataFrame:
+    """
+    BitgetFutures wrappers vary. Some don't expose fetch_ohlcv; we try common method names.
+    Returns a normalized pandas DataFrame.
+    """
+    # 1) Preferred method name (your script originally used this)
+    if hasattr(bitget, "fetch_ohlcv"):
+        return _to_ohlcv_df(bitget.fetch_ohlcv(symbol, timeframe, limit=limit))
+
+    # 2) Common alternatives
+    candidates = [
+        "fetch_ohlcv_dataframe",
+        "fetch_ohlcv_df",
+        "get_ohlcv",
+        "get_ohlcv_df",
+        "get_candles",
+        "fetch_candles",
+        "fetch_klines",
+        "get_klines",
+        "get_kline",
+        "candles",
+        "klines",
+    ]
+    for name in candidates:
+        fn = getattr(bitget, name, None)
+        if callable(fn):
+            try:
+                out = fn(symbol, timeframe, limit=limit)
+            except TypeError:
+                # some wrappers use (symbol, timeframe, n) positional without keyword
+                out = fn(symbol, timeframe, limit)
+            return _to_ohlcv_df(out)
+
+    # 3) If BitgetFutures exposes the underlying ccxt exchange instance, try that
+    for ex_attr in ("exchange", "client", "ccxt", "_exchange", "_client"):
+        ex = getattr(bitget, ex_attr, None)
+        if ex is not None and hasattr(ex, "fetch_ohlcv"):
+            return _to_ohlcv_df(ex.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit))
+
+    raise AttributeError(
+        "Could not find an OHLCV fetch method on BitgetFutures. "
+        "Run an introspection: print([m for m in dir(BitgetFutures) if 'ohlc' in m.lower() or 'candle' in m.lower() or 'kline' in m.lower()])"
+    )
+
+
+def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # Bollinger
     bb = ta.volatility.BollingerBands(df["close"], window=params["bb_period"], window_dev=params["bb_std"])
     df["bb_mid"] = bb.bollinger_mavg()
@@ -100,8 +186,8 @@ def compute_indicators(df):
 def main():
     bitget = BitgetFutures()
 
-    # 1) Fetch data
-    data = bitget.fetch_ohlcv(params["symbol"], params["timeframe"], limit=300)
+    # 1) Fetch data (robust)
+    data = fetch_ohlcv_df(bitget, params["symbol"], params["timeframe"], limit=300)
     if data is None or len(data) < 60:
         print(f"{datetime.now().strftime('%H:%M:%S')}: not enough data")
         return
@@ -117,7 +203,7 @@ def main():
 
     # 3) If a position exists: place TP to basis + SL (ATR) and exit (single entry logic)
     if position and position.get("contracts", 0) > 0:
-        side = position["side"]  # 'long' or 'short'
+        side = position["side"]  # "long" or "short"
         entry = float(position["info"]["openPriceAvg"])
         amount = position["contracts"] * position["contractSize"]
 
@@ -206,6 +292,7 @@ def main():
         entry_price = bb_low
         qty = notional / entry_price
         trigger_price = entry_price * (1 + params["trigger_price_delta"])
+
         bitget.place_trigger_limit_order(
             symbol=params["symbol"],
             side="buy",
@@ -225,6 +312,7 @@ def main():
         entry_price = bb_up
         qty = notional / entry_price
         trigger_price = entry_price * (1 - params["trigger_price_delta"])
+
         bitget.place_trigger_limit_order(
             symbol=params["symbol"],
             side="sell",
