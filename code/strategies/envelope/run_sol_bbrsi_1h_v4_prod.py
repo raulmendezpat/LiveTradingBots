@@ -30,7 +30,7 @@ params = {
     "timeframe": "1h",
     "margin_mode": "isolated",  # "cross"
     "balance_fraction": 1,
-    "leverage": 2,
+    "leverage": 3,
 
     # Position sizing (single entry)
     "position_size_percentage": 20,
