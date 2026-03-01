@@ -1,0 +1,14 @@
+
+02:19:33: >>> starting execution for BTC/USDT:USDT (TREND v5 PROD)
+02:19:35: placed SHORT @EMA20=65947.52 trigger=65848.59 ADX=34.4 qty=0.001702
+
+03:00:04: >>> starting execution for BTC/USDT:USDT (TREND v5 PROD)
+03:00:07: placed SHORT @EMA20=66103.22 trigger=66004.06 ADX=35.9 qty=0.001698
+
+03:04:13: >>> starting execution for BTC/USDT:USDT (TREND v5.1 PROD)
+03:04:16: preplaced TP/SL for pending entry. TP=63997.27 SL=67237.18
+03:04:16: placed SHORT @EMA20=66103.22 trigger=66004.06 ADX=35.9 qty=0.001698
+-bash: cd: too many arguments
+
+03:14:45: >>> starting execution for BTC/USDT:USDT (TREND v5.1 PROD)
+03:14:47: already placed/attempted entry this candle -> skip

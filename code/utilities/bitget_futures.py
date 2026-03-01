@@ -99,17 +99,20 @@ class BitgetFutures():
             raise Exception(f"Failed to cancel the {symbol} order {id}: {e}")
 
     def cancel_trigger_order(self, id: str, symbol: str) -> Dict[str, Any]:
+        # Defensive check: symbol should look like "BTC/USDT:USDT".
+        if not isinstance(symbol, str) or "/" not in symbol:
+            raise Exception(f"cancel_trigger_order called with invalid symbol={symbol} (id={id}) - likely argument order swapped")
         try:
-            return self.session.cancel_order(id, symbol, params={'stop': True})
+            return self.session.cancel_order(id, symbol, params={"stop": True})
         except Exception as e:
             raise Exception(f"Failed to cancel the {symbol} trigger order {id}: {e}")
 
     def fetch_open_positions(self, symbol: str) -> List[Dict[str, Any]]:
         try:
-            positions = self.session.fetch_positions([symbol], params={'marginCoin': 'USDT'})
+            positions = self.session.fetch_positions([symbol], params={"marginCoin": "USDT"})
             real_positions = []
             for position in positions:
-                contracts = position.get('contracts')
+                contracts = position.get("contracts")
                 if contracts and float(contracts) != 0:
                     real_positions.append(position)
             return real_positions

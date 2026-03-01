@@ -154,7 +154,7 @@ def cancel_trigger_ids(bitget, symbol, ids):
         if not oid:
             continue
         try:
-            bitget.cancel_trigger_order(symbol, oid)
+            bitget.cancel_trigger_order(oid, symbol)
         except Exception as e:
             print(f"{_now()}: cancel_trigger_order failed for {oid}: {e}")
 
@@ -170,7 +170,7 @@ def cancel_all_reduce_only_triggers(bitget, symbol):
             oid = _extract_oid(o)
             if oid:
                 try:
-                    bitget.cancel_trigger_order(symbol, oid)
+                    bitget.cancel_trigger_order(oid, symbol)
                 except Exception:
                     pass
 
